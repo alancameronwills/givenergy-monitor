@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GivEnergy Power</title>
+  <style>
+    body { font-family: monospace; max-width: 480px; margin: 2rem auto; padding: 0 1rem; }
+    #status { color: #888; margin-bottom: 1rem; min-height: 1.2em; }
+    table { border-collapse: collapse; width: 100%; }
+    td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #eee; }
+    td:last-child { text-align: right; font-weight: bold; }
+    button { margin-top: 1rem; margin-right: 0.5rem; padding: 0.4rem 0.8rem; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h2>GivEnergy Power</h2>
+  <div id="status">Initialising…</div>
+  <table id="data" style="display:none">
+    <tr><td>PV 1</td>        <td id="pv1"></td></tr>
+    <tr><td>PV 2</td>        <td id="pv2"></td></tr>
+    <tr><td>Solar total</td> <td id="solar"></td></tr>
+    <tr><td>Grid</td>        <td id="grid"></td></tr>
+    <tr><td>Battery</td>     <td id="batt"></td></tr>
+    <tr><td>Battery SOC</td> <td id="soc"></td></tr>
+    <tr><td>Load</td>        <td id="load"></td></tr>
+  </table>
+  <div>
+    <button id="refresh">Refresh</button>
+    <button id="rescan">Re-scan network</button>
+  </div>
+
+  <script type="module">
+    import { getPowerData } from '/givenergy.js';
+
+    const status = document.getElementById('status');
+    const table  = document.getElementById('data');
+
+    function w(id, text) { document.getElementById(id).textContent = text; }
+    function watts(v)  { return `${v} W`; }
+    function signed(v) { return `${v > 0 ? '+' : ''}${v} W`; }
+
+    async function load() {
+      table.style.display = 'none';
+      status.textContent = 'Fetching…';
+      try {
+        const d = await getPowerData();
+        w('pv1',   watts(d.pv1_power_W));
+        w('pv2',   watts(d.pv2_power_W));
+        w('solar', watts(d.pv1_power_W + d.pv2_power_W));
+        w('grid',  signed(d.grid_power_W));
+        w('batt',  signed(d.battery_power_W));
+        w('soc',   `${d.battery_soc_percent} %`);
+        w('load',  watts(d.load_power_W));
+        table.style.display = '';
+        status.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+      } catch (err) {
+        status.textContent = `Error: ${err.message}`;
+      }
+    }
+
+    async function scan() {
+      status.textContent = 'Scanning network for inverter…';
+      table.style.display = 'none';
+      try {
+        const res  = await fetch('/scan');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        status.textContent = `Inverter found at ${data.host}`;
+        await load();
+      } catch (err) {
+        status.textContent = `Scan failed: ${err.message}`;
+      }
+    }
+
+    document.getElementById('refresh').onclick = load;
+    document.getElementById('rescan').onclick   = scan;
+
+    load();
+  </script>
+</body>
+</html>

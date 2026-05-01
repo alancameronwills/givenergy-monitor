@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+<!-- Pi screen 480 x 320 -->
+<head>
+	<meta http-equiv="refresh" content="14400">
+	<meta name="viewport"
+		content="width=device-width, user-scalable=no, minimum-scale=1, maximum-scale=1,initial-scale=1" />
+	<meta http-equiv='Content-Type' content='text/html; charset=utf-8' />
+	<title>Pantywylan</title>
+	<script src="weather.js?v=3"></script>
+	<script>
+		var batteryConstrained = null;
+		function start() {
+			refresh();
+			setInterval(() => {
+				refresh();
+			}, 60000);
+			showWeather("weather", "daychart");
+		}
+		var previousSum = 0;
+		var minuteCount = 0;
+		var timeWentBust = null;
+		async function refresh() {
+			let sum = 0;
+			let bust = false;
+			try {
+				const m = await import ('/givenergy.js');
+				const d = await m.getPowerData();
+				const state = {
+					s1: d.pv1_power_W,
+					s2: d.pv2_power_W,
+					bDrain: Math.max(0,d.battery_power_W),
+					bCharge: -Math.min(0,d.battery_power_W),
+					gImport: -Math.min(0,d.grid_power_W),
+					gExport: Math.max(0,d.grid_power_W),
+					load: d.load_power_W,
+					bFill: d.battery_soc_percent
+				};
+				//const state = await (await fetch("https://pv-fudge.azurewebsites.net/api/state")).json();
+				
+				const sumIn = state.s1 + state.s2 + state.bDrain + state.gImport;
+				const sumOut = state.gExport + state.load + state.bCharge;
+				setHeight("i-s1", state.s1);
+				setHeight("i-s2", state.s2);
+				setHeight("i-b", state.bDrain);
+				setHeight("i-g", state.gImport, sumIn);
+				setHeight("o-g", state.gExport);
+				setHeight("o-b", state.bCharge);
+				setHeight("o-l", state.load, sumOut);
+				setWidth("bFill", state.bFill + 1);
+				sum = state.s1 + state.s2 + state.bDrain + state.gImport + state.gExport + state.bCharge + state.load + state.bFill;
+				/*let unbalanced = Math.abs(state.s1 - state.s2) > 500;
+				setFlag("i-s1", unbalanced);
+				setFlag("i-s2", unbalanced);
+				batteryConstrain(state.load > 2600 && (state.s1+state.s2)>200 && state.bCharge < 10);
+				*/
+			} catch {
+				bust = true;
+			}
+			if (bust && timeWentBust == null) {
+				document.body.classList.add("unavailable");
+				timeWentBust = new Date();
+				document.querySelector("#bustMsg").innerHTML = timeWentBust.toTimeString().substr(0, 8);
+			} else if (!bust && timeWentBust) {
+				document.body.classList.remove("unavailable");
+				timeWentBust = null;
+			}
+			if (sum != previousSum) {
+				minuteCount = 0;
+				previousSum = sum;
+			}
+			document.getElementById("minutes").innerHTML = minuteCount || "";
+		}
+		function setHeight(id, watts, max) {
+			const restricted = max ? watts - Math.max(0, max - 6100) : watts;
+			const segment = document.getElementById(id);
+			segment.style.height = `${restricted * 16 / 1000}%`;
+			segment.innerHTML = watts < 500 ? "" : "" + watts;
+		}
+		function setWidth(id, percent) {
+			const segment = document.getElementById(id);
+			segment.style.width = `${percent}%`;
+		}
+		function setFlag(id, on = true) {
+			const segment = document.getElementById(id);
+			if (on) segment.classList.add("flag");
+			else segment.classList.remove("flag");
+		}
+		function fullscreen() {
+			if (document.fullscreenElement)
+				document.location.reload();
+			else
+				document.body.requestFullscreen();
+		}
+		function batteryConstrain(constrain = true) {
+			if (batteryConstrained != constrain) {
+				fetch(`https://pv-fudge.azurewebsites.net/api/state?battery=${constrain ? 10 : 2600}`);
+				batteryConstrained = constrain;
+				setFlag("bFill", constrain);
+			}
+		}
+	</script>
+	<style>
+		body {
+			background: #000;
+			cursor: none;
+			color: white;
+		}
+
+		#pv {
+			position: absolute;
+			top: 0;
+			bottom: 0;
+			right: 5vw;
+			width: 22vw;
+			font-family: sans-serif;
+			font-size: 5vh;
+		}
+
+		#mask {
+			position: absolute;
+			top: 0;
+			bottom: 10%;
+			left: 0;
+			right: 0;
+			background-color: #000;
+			opacity: 0;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			z-index: 1;
+		}
+
+		#mask>img {
+			max-height: 100%;
+			max-width: 100%;
+		}
+
+		.unavailable #mask {
+			opacity: 0.9;
+		}
+
+		#bottom {
+			position: absolute;
+			bottom: 2%;
+			left: 0;
+			right: 0;
+			height: 5vh;
+		}
+
+		.creditDebit {
+			position: absolute;
+			top: 10%;
+			right: 0;
+			left: 0%;
+			bottom: 10%;
+			display: flex;
+			justify-content: space-between;
+		}
+
+		.creditDebit>div {
+			width: 35%;
+			display: flex;
+			flex-direction: column;
+			justify-content: flex-end;
+			align-items: center;
+			background-color: rgb(30, 30, 30);
+		}
+
+		#scale {
+			width: 10%;
+		}
+
+		#scale>div {
+			height: 16%;
+			width: 100%;
+			border-top: 1px solid white;
+			font-size: 5vh;
+			font-family: sans-serif;
+			text-align: center;
+			color: white;
+		}
+
+		.segment {
+			width: 100%;
+			height: 10%;
+			text-align: center;
+		}
+
+		.flag {
+			outline: red 1px solid;
+		}
+
+		.hsegment {
+			width: 20%;
+			height: 100%;
+			text-align: center;
+		}
+
+		#i-g {
+			background-color: red;
+		}
+
+		#o-g {
+			background-color: darkred;
+		}
+
+		#i-b {
+			background-color: rgb(53 197 243);
+		}
+
+		#o-b {
+			background-color: rgb(58 122 197);
+		}
+
+		#i-s1 {
+			background-color: yellow;
+		}
+
+		#i-s2 {
+			background-color: rgb(255, 232, 0);
+		}
+
+		#o-l {
+			background-color: rgb(0 151 0);
+		}
+
+		#bFill {
+			background-color: aqua;
+		}
+
+		#minutes {
+			position: absolute;
+			bottom: 2%;
+			right: 10%;
+		}
+
+		#weather {
+			position: fixed;
+			left: 2vw;
+			right: 0;
+			bottom: 2vh;
+		}
+		#daychart {
+			position: fixed;
+			left: 2vw;
+			width: 300px;
+			top: 2vh;
+		}
+
+		center {
+			display: none;
+		}
+	</style>
+</head>
+
+<body onload="start()">
+	<div id="daychart"></div>
+	<div id="weather"></div>
+	<div id="pv">
+		<div id="mask" onclick="fullscreen()"><img
+				src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMEAAADMCAMAAAD9AjdwAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAIZUExURa6uroSEhLq6uv///+/v74mJiby8vPDw8IiIiMLCwvHx8YuLi8HBwf39/fPz85mZmfv7+/f3952dnfb29pycnFZWVmRkZG1tbXV1dXx8fHZ2dm5ubmZmZlhYWPX19Y2NjW9vb5iYmNzc3Pz8/N/f376+vnJycmNjY8vLy8nJyZubm2lpaWFhYZKSksPDw/Ly8sXFxXFxcaCgoNDQ0PT09M3NzZ6eno6Ojuzs7JOTk1NTU7S0tLi4uODg4N7e3u7u7n19fcTExN3d3fr6+vn5+dfX13Nzc9ra2s/Pz87Ozra2tqioqIGBgevr6+jo6FxcXLu7u+Hh4aurq3l5eWVlZXR0dKysrFRUVIyMjKmpqfj4+GBgYL29vf7+/oWFha+vr7m5ue3t7WpqatPT035+fsbGxre3t7+/v4CAgNbW1pqamsfHx+fn52JiYurq6ubm5lVVVWhoaOLi4tXV1bGxsWxsbHt7e6WlpXd3d9LS0k9PT0tLS8DAwIaGhoqKildXV0xMTFtbW5SUlNHR0VFRUdnZ2V1dXbOzs3BwcKGhoZ+fn+np6crKyqKiol5eXoKCgoODg7Kysk1NTeXl5aampoeHh3p6epCQkJeXl5WVleTk5KOjo05OTtTU1GdnZ9vb219fX3h4eLCwsI+Pj39/f9jY2MzMzOPj47W1taenp1lZWVBQUK2trVpaWlJSUpaWlqSkpMjIyAAAAGVnsc8AAACzdFJOU/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////8ADym/6AAAAAlwSFlzAAAOwwAADsMBx2+oZAAADyBJREFUeF7tnfl/FEUaxoGOBAITAlGEoBEIAaIhAiYeiyFKAgZXkENZCYw44IEQMYLsgoLCuogQD47VxYvD9djVPaD/wq3ueabf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" />
+			<div id="bustMsg"></div>
+		</div>
+		<div class="creditDebit" onclick="fullscreen()">
+			<div id="scale">
+				<div>6</div>
+				<div>5</div>
+				<div>4</div>
+				<div>3</div>
+				<div>2</div>
+				<div>1</div>
+			</div>
+			<div id="credit">
+				<div id="i-g" class="segment"></div>
+				<div id="i-b" class="segment"></div>
+				<div id="i-s1" class="segment"></div>
+				<div id="i-s2" class="segment"></div>
+			</div>
+			<div id="debit">
+				<div id="o-g" class="segment"></div>
+				<div id="o-b" class="segment"></div>
+				<div id="o-l" class="segment"></div>
+
+			</div>
+		</div>
+		<div id="bottom">
+			<div id="bFill" class="hsegment"></div>
+		</div>
+		<div id="minutes"></div>
+	</div>
+</body>
+
+</html>
