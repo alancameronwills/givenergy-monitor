@@ -1,0 +1,13 @@
+{
+  "name": "giv-tcp-node",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file=.env server.js",
+    "dev": "node --env-file=.env --watch server.js",
+    "scan": "node scan.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}

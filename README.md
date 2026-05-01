@@ -30,7 +30,9 @@ Content of this directory:
 * READ_ME.md	- This file
 
 * ~/.config/autostart/run-monitor.desktop - X-Windows config file starts run.sh on power up :
+```
 [Desktop Entry]
 Name=Fullscreen browser
 Exec=/home/alan/givenergy-monitor/run.sh
 Type=Application
+```
