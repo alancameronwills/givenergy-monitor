@@ -10,6 +10,6 @@ fi
 
 cd ~/codebuffer/$NAME
 git fetch -q --all &&
-git reset --hard origin/master  &&
+git reset --hard origin/main  &&
 cp -ruv ~/codebuffer/$NAME ~/$NAME &&
 echo "Got code"
