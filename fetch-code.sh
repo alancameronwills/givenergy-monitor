@@ -1,6 +1,6 @@
 echo
 date
-NAME=giv-tcp-node
+NAME=givenergy-monitor
 if test ! -d ~/codebuffer/$NAME ;
 then 
 	mkdir ~/codebuffer
