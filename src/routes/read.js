@@ -4,7 +4,7 @@ import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { fetchAllRegisters } from '../modbus/client.js';
 import { buildInverterData, buildBatteryData } from '../datamodel.js';
-import { findInverter } from '../scanner.js';
+import { findInverter, hasLanConnectivity } from '../scanner.js';
 import config from '../config.js';
 
 const ENV_PATH = resolve(fileURLToPath(new URL('../..', import.meta.url)), '.env');
@@ -81,6 +81,12 @@ setInterval(async () => {
   if (!hasConnected || scanning) return;
   const now = Date.now();
   if (now - lastSuccess < CONTACT_TIMEOUT_MS) return;
+
+  if (!await hasLanConnectivity()) {
+    // Pi is off the LAN (WiFi noise/dropout) — don't scan, don't advance nextScanAt.
+    // The check will retry next minute; once connectivity returns we'll scan immediately.
+    return;
+  }
 
   if (nextScanAt === null || now >= nextScanAt) {
     await runReconnectScan();

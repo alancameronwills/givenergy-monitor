@@ -1,5 +1,6 @@
 import net from 'net';
 import os from 'os';
+import { readFileSync } from 'fs';
 import { buildReadHoldingFrame } from './modbus/protocol.js';
 
 const INVERTER_PORT    = 8899;
@@ -119,4 +120,38 @@ export async function findInverter({ range, onProgress } = {}) {
   }
 
   return null;
+}
+
+// Read the default gateway from the Linux routing table (/proc/net/route).
+// Returns null on non-Linux or if no default route exists.
+function getDefaultGateway() {
+  try {
+    for (const line of readFileSync('/proc/net/route', 'utf8').trim().split('\n').slice(1)) {
+      const parts = line.trim().split(/\s+/);
+      if (parts[1] === '00000000' && parts[2] !== '00000000') {
+        const h = parts[2]; // little-endian hex, e.g. "0101A8C0" → 192.168.1.1
+        return [parseInt(h.slice(6,8),16), parseInt(h.slice(4,6),16),
+                parseInt(h.slice(2,4),16), parseInt(h.slice(0,2),16)].join('.');
+      }
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Returns true if the Pi can reach its default gateway (LAN is up).
+ * ECONNREFUSED counts as reachable — the host is up, the port is just closed.
+ * Falls back to checking whether any non-loopback IPv4 interface exists.
+ */
+export function hasLanConnectivity() {
+  const gw = getDefaultGateway();
+  if (!gw) return getCandidateNetworks().length > 0;
+
+  return new Promise(resolve => {
+    const sock  = net.createConnection({ host: gw, port: 80 });
+    const timer = setTimeout(() => { sock.destroy(); resolve(false); }, 2000);
+    const done  = v => { clearTimeout(timer); sock.destroy(); resolve(v); };
+    sock.on('connect', () => done(true));
+    sock.on('error',  err => done(err.code === 'ECONNREFUSED'));
+  });
 }

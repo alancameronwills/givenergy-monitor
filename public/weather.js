@@ -327,10 +327,13 @@ class DayChart {
                         markCurrentTime = true;
                     }
                 }
-                let lum = Math.min(100, 15 + Math.round(5 * hours[i + 1].s) / 60);
                 // Figures are for prior hour, so e.g. midday figures are shown at 13:00
                 let mark = dt.getHours() % 6 == 0 ? "<div class='mark'></div>" : "";
-                content += `<div style='background-color:hsl(60,100%,${lum}%)' ${markCurrentTime ? "class='time'" : ""}>${mark}</div>`;
+                let sun = Math.max(16,Math.min(100, Math.round(Math.max(0,hours[i+1].s - 100)/3)));
+                let yellow = Math.round(sun*255/100);
+                let blue = Math.min(160, yellow);
+                content += `<div style='background-color:rgb(${yellow}, ${yellow}, ${blue})' ${markCurrentTime ? "class='time'" : ""}>${mark}</div>`;
+                
             }
         }
         content += "</div>";
