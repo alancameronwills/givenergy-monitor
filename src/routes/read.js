@@ -29,8 +29,17 @@ const router = Router();
 
 let cache = null;
 
+// Reconnect monitor state
+let hasConnected = false;
+let lastSuccess  = null;
+let scanning     = false;
+let nextScanAt   = null;
+const CONTACT_TIMEOUT_MS = 20 * 60 * 1000;
+
 async function refreshCache() {
   const { holdingRegisters, inputRegisters, batteries } = await fetchAllRegisters(config.numBatteries);
+  hasConnected = true;
+  lastSuccess  = Date.now();
   cache = {
     ...buildInverterData(holdingRegisters, inputRegisters),
     batteries: batteries.map((regs, i) => buildBatteryData(regs, i + 1)),
@@ -38,6 +47,45 @@ async function refreshCache() {
   };
   return cache;
 }
+
+async function runReconnectScan() {
+  if (scanning) return;
+  scanning = true;
+  console.log('Scanning network for GivEnergy inverter...');
+  try {
+    const ip = await findInverter({
+      onProgress: (checked, total, network) =>
+        process.stdout.write(`\r  Reconnect scan: ${network} ${checked}/${total}...`),
+    });
+    process.stdout.write('\n');
+    if (ip) {
+      console.log(`Inverter found at ${ip}`);
+      config.host              = ip;
+      process.env.INVERTER_HOST = ip;
+      persistHost(ip);
+      lastSuccess = Date.now();
+      nextScanAt  = null;
+    } else {
+      console.log('Inverter not found. Will retry in 20 minutes.');
+      nextScanAt = Date.now() + CONTACT_TIMEOUT_MS;
+    }
+  } catch (err) {
+    console.error('Reconnect scan error:', err.message);
+    nextScanAt = Date.now() + CONTACT_TIMEOUT_MS;
+  } finally {
+    scanning = false;
+  }
+}
+
+setInterval(async () => {
+  if (!hasConnected || scanning) return;
+  const now = Date.now();
+  if (now - lastSuccess < CONTACT_TIMEOUT_MS) return;
+
+  if (nextScanAt === null || now >= nextScanAt) {
+    await runReconnectScan();
+  }
+}, 60_000);
 
 router.get('/runAll', async (req, res) => {
   try {

@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm start          # Run server (requires .env)
+npm start          # Run server (scans for inverter on startup)
 npm run dev        # Run with --watch for auto-reload
 npm run scan       # Discover inverter on local network
 node scan.js 192.168.1.0/24        # Scan specific CIDR
@@ -18,9 +18,17 @@ There is no automated test suite. Test manually via cURL against `http://localho
 
 ## Environment Setup
 
-Copy `.env.example` to `.env` and set `INVERTER_HOST`. The server uses `node --env-file=.env` to load it.
+`.env` is created/updated automatically — no manual setup required. On first run the server scans the local network, finds the inverter, and writes `.env`. Subsequent runs load `.env` via `--env-file-if-exists=.env` then re-scan to confirm the IP.
 
 Key variables: `INVERTER_HOST`, `INVERTER_PORT` (default 8899), `INVERTER_AIO` (All-in-One model flag), `NUM_BATTERIES`, `API_PORT` (default 6345).
+
+## Inverter discovery and reconnection
+
+`server.js` scans the network at startup (via `src/scanner.js`) before starting Express. If the scan fails, it falls back to the `INVERTER_HOST` already in the environment.
+
+The server calls `process.exit(0)` after 24 hours so a process manager (systemd `Restart=always`, PM2, or a shell loop) restarts it and re-scans.
+
+`src/routes/read.js` runs a background reconnect monitor (`setInterval`, 60 s). Once any modbus read has succeeded (`hasConnected = true`), it watches `lastSuccess`. If more than 20 minutes pass without a successful read it runs a network scan and updates `config.host` live. On scan failure it retries every 20 minutes.
 
 ## Architecture
 
