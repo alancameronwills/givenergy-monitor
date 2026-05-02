@@ -11,5 +11,5 @@ fi
 cd ~/codebuffer/$NAME
 git fetch -q --all &&
 git reset --hard origin/main  &&
-cp -ruv ~/codebuffer/$NAME ~/$NAME &&
+cp -ruv ~/codebuffer/$NAME ~/ &&
 echo "Got code"
