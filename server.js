@@ -60,8 +60,3 @@ app.listen(config.apiPort, () => {
   console.log(`Batteries: ${config.numBatteries}`);
 });
 
-// Exit after 24 hours so the process manager restarts and re-scans
-setTimeout(() => {
-  console.log('24-hour restart — re-scanning for inverter on next start');
-  process.exit(0);
-}, 24 * 60 * 60 * 1000);
