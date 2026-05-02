@@ -28,7 +28,9 @@ Key variables: `INVERTER_HOST`, `INVERTER_PORT` (default 8899), `INVERTER_AIO` (
 
 The server calls `process.exit(0)` after 24 hours so a process manager (systemd `Restart=always`, PM2, or a shell loop) restarts it and re-scans.
 
-`src/routes/read.js` runs a background reconnect monitor (`setInterval`, 60 s). Once any modbus read has succeeded (`hasConnected = true`), it watches `lastSuccess`. If more than 20 minutes pass without a successful read it runs a network scan and updates `config.host` live. On scan failure it retries every 20 minutes.
+`src/routes/read.js` runs a background reconnect monitor (`setInterval`, 60 s). Once any modbus read has succeeded (`hasConnected = true`), it watches `lastSuccess`. If more than 20 minutes pass without a successful read it first calls `hasLanConnectivity()` (in `src/scanner.js`) to check whether the Pi can reach its default gateway. If the LAN is unreachable (WiFi dropout), the cycle is skipped without advancing `nextScanAt`, so a scan fires immediately once connectivity returns. If the LAN is up but the inverter is gone, it runs a network scan and updates `config.host` live. On scan failure it retries every 20 minutes.
+
+`hasLanConnectivity()` reads the default gateway from `/proc/net/route` (Linux/Raspberry Pi) and attempts a 2-second TCP connection to it on port 80. `ECONNREFUSED` counts as reachable. Falls back to checking `os.networkInterfaces()` if no gateway is found (e.g. on Windows during development).
 
 ## Architecture
 
