@@ -9,7 +9,6 @@
 	<title>Pantywylan</title>
 	<script src="weather.js?v=3"></script>
 	<script>
-		var batteryConstrained = null;
 		function start() {
 			refresh();
 			setInterval(() => {
@@ -20,9 +19,9 @@
 		var previousSum = 0;
 		var minuteCount = 0;
 		var timeWentBust = null;
+		var bust = 0;
 		async function refresh() {
 			let sum = 0;
-			let bust = false;
 			try {
 				const m = await import ('/givenergy.js');
 				const d = await m.getPowerData();
@@ -49,21 +48,19 @@
 				setHeight("o-l", state.load, sumOut);
 				setWidth("bFill", state.bFill + 1);
 				sum = state.s1 + state.s2 + state.bDrain + state.gImport + state.gExport + state.bCharge + state.load + state.bFill;
-				/*let unbalanced = Math.abs(state.s1 - state.s2) > 500;
-				setFlag("i-s1", unbalanced);
-				setFlag("i-s2", unbalanced);
-				batteryConstrain(state.load > 2600 && (state.s1+state.s2)>200 && state.bCharge < 10);
-				*/
-			} catch {
-				bust = true;
-			}
-			if (bust && timeWentBust == null) {
-				document.body.classList.add("unavailable");
-				timeWentBust = new Date();
-				document.querySelector("#bustMsg").innerHTML = timeWentBust.toTimeString().substr(0, 8);
-			} else if (!bust && timeWentBust) {
-				document.body.classList.remove("unavailable");
+				bust = 0;
 				timeWentBust = null;
+			} catch {
+				bust++;
+				if (!timeWentBust) {
+					timeWentBust = new Date();
+				}
+			}
+			if (bust>3) {
+				document.body.classList.add("unavailable");
+				document.querySelector("#bustMsg").innerHTML = timeWentBust.toTimeString().substr(0, 8);
+			} else if (!bust) {
+				document.body.classList.remove("unavailable");
 			}
 			if (sum != previousSum) {
 				minuteCount = 0;
@@ -91,13 +88,6 @@
 				document.location.reload();
 			else
 				document.body.requestFullscreen();
-		}
-		function batteryConstrain(constrain = true) {
-			if (batteryConstrained != constrain) {
-				fetch(`https://pv-fudge.azurewebsites.net/api/state?battery=${constrain ? 10 : 2600}`);
-				batteryConstrained = constrain;
-				setFlag("bFill", constrain);
-			}
 		}
 	</script>
 	<style>
