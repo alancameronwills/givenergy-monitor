@@ -12,9 +12,27 @@ import {
 const CONNECT_TIMEOUT_MS = 5000;
 const REQUEST_TIMEOUT_MS = 10000;
 const SLEEP_BETWEEN_QUERIES_MS = 500;
+const READ_RETRIES = 2;         // extra attempts per register batch on transient failure
+const RETRY_DELAY_MS = 750;
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Retry a single register read a couple of times before giving up. Momentary
+// drops (inverter's WiFi dongle, a dropped TCP handshake) are common and usually
+// clear within a second, so a short retry avoids surfacing them as a full outage.
+async function withRetry(fn) {
+  let lastErr;
+  for (let attempt = 0; attempt <= READ_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (attempt < READ_RETRIES) await sleep(RETRY_DELAY_MS);
+    }
+  }
+  throw lastErr;
 }
 
 function sendAndReceive(frame, expectedBytes) {
@@ -55,15 +73,19 @@ function sendAndReceive(frame, expectedBytes) {
 }
 
 export async function readHoldingRegisters(slaveAddr, baseRegister, count = 60) {
-  const frame = buildReadHoldingFrame(slaveAddr, baseRegister, count);
-  const result = await sendAndReceive(frame, readResponseSize(count));
-  return result.values;
+  return withRetry(async () => {
+    const frame = buildReadHoldingFrame(slaveAddr, baseRegister, count);
+    const result = await sendAndReceive(frame, readResponseSize(count));
+    return result.values;
+  });
 }
 
 export async function readInputRegisters(slaveAddr, baseRegister, count = 60) {
-  const frame = buildReadInputFrame(slaveAddr, baseRegister, count);
-  const result = await sendAndReceive(frame, readResponseSize(count));
-  return result.values;
+  return withRetry(async () => {
+    const frame = buildReadInputFrame(slaveAddr, baseRegister, count);
+    const result = await sendAndReceive(frame, readResponseSize(count));
+    return result.values;
+  });
 }
 
 export async function writeHoldingRegister(register, value) {

@@ -35,11 +35,45 @@ let lastSuccess  = null;
 let scanning     = false;
 let nextScanAt   = null;
 const CONTACT_TIMEOUT_MS = 20 * 60 * 1000;
+const FAST_RESCAN_FAILURES = 3;   // consecutive failed reads (~3 min of polling) before a rescan
+
+// Diagnostic state — surfaced via GET /status so the UI can tell whether a
+// dropout is the Pi's own LAN/WiFi or the link to the inverter.
+let consecutiveFailures = 0;
+let lastLanUp           = null;   // result of the most recent connectivity check
+let lastError           = null;   // { message, code, layer, at }
+
+// On a failed read, work out which layer broke: if the Pi cannot reach its own
+// default gateway the fault is local networking (WiFi); otherwise the LAN is up
+// but the inverter is unreachable/unresponsive.
+async function classifyFailure(err) {
+  let lanUp = null;
+  try { lanUp = await hasLanConnectivity(); } catch { /* leave null */ }
+  lastLanUp = lanUp;
+  lastError = {
+    message: err.message,
+    code: err.code || null,
+    layer: lanUp === false ? 'wifi' : 'inverter',
+    at: new Date().toISOString(),
+  };
+  return lastError;
+}
 
 async function refreshCache() {
-  const { holdingRegisters, inputRegisters, batteries } = await fetchAllRegisters(config.numBatteries);
-  hasConnected = true;
-  lastSuccess  = Date.now();
+  let raw;
+  try {
+    raw = await fetchAllRegisters(config.numBatteries);
+  } catch (err) {
+    consecutiveFailures++;
+    await classifyFailure(err);
+    throw err;
+  }
+  const { holdingRegisters, inputRegisters, batteries } = raw;
+  hasConnected        = true;
+  lastSuccess         = Date.now();
+  consecutiveFailures = 0;
+  lastLanUp           = true;
+  lastError           = null;
   cache = {
     ...buildInverterData(holdingRegisters, inputRegisters),
     batteries: batteries.map((regs, i) => buildBatteryData(regs, i + 1)),
@@ -63,8 +97,9 @@ async function runReconnectScan() {
       config.host              = ip;
       process.env.INVERTER_HOST = ip;
       persistHost(ip);
-      lastSuccess = Date.now();
-      nextScanAt  = null;
+      lastSuccess         = Date.now();
+      consecutiveFailures = 0;
+      nextScanAt          = null;
     } else {
       console.log('Inverter not found. Will retry in 20 minutes.');
       nextScanAt = Date.now() + CONTACT_TIMEOUT_MS;
@@ -80,9 +115,16 @@ async function runReconnectScan() {
 setInterval(async () => {
   if (!hasConnected || scanning) return;
   const now = Date.now();
-  if (now - lastSuccess < CONTACT_TIMEOUT_MS) return;
+  const stale       = now - lastSuccess >= CONTACT_TIMEOUT_MS;
+  const failingFast = consecutiveFailures >= FAST_RESCAN_FAILURES;
+  // Rescan either when a client is actively polling and getting errors
+  // (failingFast) or, as a fallback when nothing is polling, once reads have
+  // been stale for 20 minutes.
+  if (!stale && !failingFast) return;
 
-  if (!await hasLanConnectivity()) {
+  const lanUp = await hasLanConnectivity();
+  lastLanUp = lanUp;
+  if (!lanUp) {
     // Pi is off the LAN (WiFi noise/dropout) — don't scan, don't advance nextScanAt.
     // The check will retry next minute; once connectivity returns we'll scan immediately.
     return;
@@ -109,6 +151,24 @@ router.get('/getData', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+router.get('/status', (req, res) => {
+  res.json({
+    host: config.host,
+    connected: lastError === null && lastSuccess !== null,
+    hasConnected,
+    scanning,
+    lanUp: lastLanUp,
+    // Which layer is at fault while disconnected: 'wifi' (Pi off the LAN),
+    // 'inverter' (LAN up but inverter unreachable), or null when connected.
+    layer: lastError ? lastError.layer : null,
+    consecutiveFailures,
+    lastSuccess: lastSuccess ? new Date(lastSuccess).toISOString() : null,
+    secondsSinceSuccess: lastSuccess ? Math.round((Date.now() - lastSuccess) / 1000) : null,
+    nextScanAt: nextScanAt ? new Date(nextScanAt).toISOString() : null,
+    lastError,
+  });
 });
 
 router.get('/getCache', (req, res) => {
