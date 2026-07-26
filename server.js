@@ -15,6 +15,14 @@ function writeEnv(vars, path = '.env') {
   writeFileSync(path, Object.entries(vars).map(([k, v]) => `${k}=${v}`).join('\n') + '\n', 'utf8');
 }
 
+// Load .env into process.env for any keys not already set. Done manually here
+// rather than via `node --env-file` because the Pi runs an older Node without
+// that flag. This restores the "last known host" fallback: if the startup scan
+// below fails, INVERTER_HOST from .env is available instead of an empty host.
+for (const [k, v] of Object.entries(readEnv())) {
+  if (process.env[k] === undefined) process.env[k] = v;
+}
+
 console.log('Scanning network for GivEnergy inverter...');
 let lastNetwork = '';
 const ip = await findInverter({
