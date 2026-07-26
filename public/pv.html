@@ -91,7 +91,7 @@
 				}
 				if (s.layer === "inverter") {
 					setLayerIcon("#3ac5f3", "🔌");   // blue — LAN up, inverter unreachable
-					return "No inverter at " + s.host + (s.scanning ? " (scanning…)" : "");
+					return (s.host ? "No inverter at " + s.host : "Searching for inverter") + (s.scanning ? " (scanning…)" : "");
 				}
 				setLayerIcon("#e53935", "⚠");        // red — unavailable, cause unclear
 				return "Inverter unavailable";

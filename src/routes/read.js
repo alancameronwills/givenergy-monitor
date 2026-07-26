@@ -97,9 +97,12 @@ async function runReconnectScan() {
       config.host              = ip;
       process.env.INVERTER_HOST = ip;
       persistHost(ip);
-      lastSuccess         = Date.now();
-      consecutiveFailures = 0;
       nextScanAt          = null;
+      // Confirm the corrected host with a real read so hasConnected flips true.
+      // Without this, a scan that runs before we've ever connected would leave
+      // hasConnected false and the monitor would keep rescanning every minute
+      // until something else happened to poll the server.
+      try { await refreshCache(); } catch { /* transient — next cycle retries */ }
     } else {
       console.log('Inverter not found. Will retry in 20 minutes.');
       nextScanAt = Date.now() + CONTACT_TIMEOUT_MS;
@@ -113,14 +116,21 @@ async function runReconnectScan() {
 }
 
 setInterval(async () => {
-  if (!hasConnected || scanning) return;
+  if (scanning) return;
   const now = Date.now();
-  const stale       = now - lastSuccess >= CONTACT_TIMEOUT_MS;
-  const failingFast = consecutiveFailures >= FAST_RESCAN_FAILURES;
-  // Rescan either when a client is actively polling and getting errors
-  // (failingFast) or, as a fallback when nothing is polling, once reads have
-  // been stale for 20 minutes.
-  if (!stale && !failingFast) return;
+
+  if (hasConnected) {
+    const stale       = now - lastSuccess >= CONTACT_TIMEOUT_MS;
+    const failingFast = consecutiveFailures >= FAST_RESCAN_FAILURES;
+    // Rescan either when a client is actively polling and getting errors
+    // (failingFast) or, as a fallback when nothing is polling, once reads have
+    // been stale for 20 minutes.
+    if (!stale && !failingFast) return;
+  }
+  // When we've never connected (hasConnected === false) the configured host may
+  // simply be wrong — e.g. a failed startup scan left us on the default gateway
+  // IP — so keep rescanning on the nextScanAt schedule until the inverter is
+  // found, rather than staying stuck on a host that never answers.
 
   const lanUp = await hasLanConnectivity();
   lastLanUp = lanUp;
