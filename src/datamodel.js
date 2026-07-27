@@ -132,6 +132,11 @@ export function buildInverterData(hr, ir) {
       },
 
       fault_code: (u16(ir, 39) << 16) | u16(ir, 40),
+      // Additive raw fault/warning words for the dashboard fault panel. The legacy
+      // fault_code above mashes IR39/IR40 into one number; these keep them separate
+      // and unshifted so the UI can show meaningful hex values.
+      fault_code_raw: u16(ir, 39),
+      warning_code_raw: u16(ir, 40),
       countdown_s: u16(ir, 38),
     },
   };

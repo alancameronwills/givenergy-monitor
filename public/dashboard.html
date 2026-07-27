@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GivEnergy Dashboard</title>
+  <style>
+    :root {
+      --pv: #ffe800; --grid-in: #e53935; --grid-out: #8b1a1a;
+      --batt-drain: #3ac5f3; --batt-charge: #3a7ac5; --load: #009700; --soc: #00e5e5;
+      --bg: #0e0e10; --card: #1a1a1d; --line: #2a2a2e; --text: #e6e6e6; --muted: #9a9aa2;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif; }
+    header { padding: 12px 16px; border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+    #conn { margin-left: auto; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+    #conn .dot { width: 10px; height: 10px; border-radius: 50%; background: #555; }
+    main { padding: 16px; display: grid; gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-items: start; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+    .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
+      color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+    .full { grid-column: 1 / -1; }
+
+    /* --- live power bars (ported from pv.html) --- */
+    #liveWrap { display: flex; gap: 16px; }
+    #bars { flex: 0 0 190px; height: 240px; display: flex; justify-content: space-between; }
+    #scale { width: 14%; }
+    #scale > div { height: 16%; width: 100%; border-top: 1px solid #444; font-size: 11px;
+      color: var(--muted); text-align: center; }
+    #credit, #debit { width: 40%; display: flex; flex-direction: column; justify-content: flex-end;
+      align-items: center; background: #202024; border-radius: 4px; overflow: hidden; }
+    .segment { width: 100%; text-align: center; font-size: 11px; color: #000; line-height: 1.4; }
+    #i-g { background: var(--grid-in); } #o-g { background: var(--grid-out); color: #fff; }
+    #i-b { background: var(--batt-drain); } #o-b { background: var(--batt-charge); color: #fff; }
+    #i-s1 { background: var(--pv); } #i-s2 { background: #ffcf00; }
+    #o-l { background: var(--load); color: #fff; }
+    #battRow { margin-top: 10px; }
+    #battTrack { height: 22px; background: #202024; border-radius: 4px; overflow: hidden; }
+    #bFill { height: 100%; width: 0; background: var(--soc); transition: width .3s; }
+    #readouts { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; align-content: start; }
+    .ro { display: flex; justify-content: space-between; font-size: 14px;
+      border-bottom: 1px dotted var(--line); padding: 4px 0; }
+    .ro .k { color: var(--muted); display: flex; align-items: center; gap: 6px; }
+    .ro .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+    .ro .v { font-variant-numeric: tabular-nums; }
+
+    /* --- fault panel --- */
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-weight: 600; font-size: 14px; }
+    .b-ok { background: #12351c; color: #57d982; } .b-warn { background: #3a2e0d; color: #f0c14b; }
+    .b-fault { background: #3a1414; color: #f27272; } .b-unknown { background: #262629; color: var(--muted); }
+    .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin-top: 12px; font-size: 14px; }
+    .kv .k { color: var(--muted); } .kv .v { text-align: right; font-variant-numeric: tabular-nums; }
+    .kv .v.warn { color: #f0c14b; } .kv .v.bad { color: #f27272; }
+
+    canvas { width: 100%; display: block; }
+    .chart-day { height: 220px; } .chart-year { height: 220px; }
+    label.sel { font-size: 13px; color: var(--muted); }
+    select { background: #202024; color: var(--text); border: 1px solid var(--line);
+      border-radius: 6px; padding: 5px 8px; font-size: 13px; }
+
+    /* --- controls (stubbed until PR2) --- */
+    .controls { opacity: .5; pointer-events: none; }
+    .controls .note { font-size: 12px; color: var(--muted); margin-bottom: 10px; font-style: italic; }
+    .ctl-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+    .ctl-row .name { flex: 0 0 150px; font-size: 14px; }
+    button { background: #202024; color: var(--text); border: 1px solid var(--line);
+      border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+    #outageBanner { display: none; background: #3a1414; color: #f7b4b4; text-align: center;
+      padding: 8px; font-size: 14px; }
+    #outageBanner.show { display: block; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>GivEnergy Dashboard</h1>
+    <div id="conn"><span class="dot"></span><span id="connText">connecting…</span></div>
+  </header>
+  <div id="outageBanner"></div>
+
+  <main>
+    <!-- Live power -->
+    <section class="card">
+      <h2>Live power</h2>
+      <div id="liveWrap">
+        <div>
+          <div id="bars">
+            <div id="scale"><div>6</div><div>5</div><div>4</div><div>3</div><div>2</div><div>1</div></div>
+            <div id="credit">
+              <div id="i-g" class="segment"></div>
+              <div id="i-b" class="segment"></div>
+              <div id="i-s1" class="segment"></div>
+              <div id="i-s2" class="segment"></div>
+            </div>
+            <div id="debit">
+              <div id="o-g" class="segment"></div>
+              <div id="o-b" class="segment"></div>
+              <div id="o-l" class="segment"></div>
+            </div>
+          </div>
+        </div>
+        <div id="readouts">
+          <div class="ro"><span class="k"><span class="sw" style="background:var(--pv)"></span>Solar</span><span class="v" id="r-pv">–</span></div>
+          <div class="ro"><span class="k"><span class="sw" style="background:var(--grid-in)"></span>Grid</span><span class="v" id="r-grid">–</span></div>
+          <div class="ro"><span class="k"><span class="sw" style="background:var(--batt-drain)"></span>Battery</span><span class="v" id="r-batt">–</span></div>
+          <div class="ro"><span class="k"><span class="sw" style="background:var(--load)"></span>Load</span><span class="v" id="r-load">–</span></div>
+          <div class="ro"><span class="k"><span class="sw" style="background:var(--soc)"></span>SOC</span><span class="v" id="r-soc">–</span></div>
+          <div class="ro"><span class="k">Mode</span><span class="v" id="r-mode">–</span></div>
+        </div>
+      </div>
+      <div id="battRow">
+        <div id="battTrack"><div id="bFill"></div></div>
+      </div>
+    </section>
+
+    <!-- Faults / status -->
+    <section class="card">
+      <h2>Status &amp; faults</h2>
+      <div><span id="statusBadge" class="badge b-unknown">–</span></div>
+      <div class="kv">
+        <span class="k">Fault code</span><span class="v" id="f-fault">–</span>
+        <span class="k">Warning code</span><span class="v" id="f-warn">–</span>
+        <span class="k">Battery temp (min/max)</span><span class="v" id="f-btemp">–</span>
+        <span class="k">Inverter heatsink</span><span class="v" id="f-itemp">–</span>
+        <span class="k">System mode</span><span class="v" id="f-sys">–</span>
+        <span class="k">Last updated</span><span class="v" id="f-updated">–</span>
+      </div>
+    </section>
+
+    <!-- Day history -->
+    <section class="card full">
+      <h2 style="display:flex;align-items:center;gap:10px;">
+        Day history
+        <label class="sel">day <select id="daySel"></select></label>
+      </h2>
+      <div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));">
+        <canvas class="chart-day" id="dayPower"></canvas>
+        <canvas class="chart-day" id="daySoc"></canvas>
+      </div>
+    </section>
+
+    <!-- Year summary -->
+    <section class="card full">
+      <h2>Year summary</h2>
+      <div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));">
+        <canvas class="chart-year" id="yearEnergy"></canvas>
+        <canvas class="chart-year" id="yearSoc"></canvas>
+      </div>
+    </section>
+
+    <!-- Controls (stubbed until PR2) -->
+    <section class="card full controls">
+      <h2>Battery controls</h2>
+      <div class="note">Controls arrive in the next update — the backend write paths are being validated against the inverter first.</div>
+      <div class="ctl-row"><span class="name">Pause charge</span><button>30m</button><button>1h</button><button>2h</button></div>
+      <div class="ctl-row"><span class="name">Pause discharge</span><button>30m</button><button>1h</button><button>2h</button></div>
+      <div class="ctl-row"><span class="name">Charge to grid</span><button>30m</button><button>1h</button><button>2h</button></div>
+      <div class="ctl-row"><span class="name">Discharge to grid</span><button>30m</button><button>1h</button><button>2h</button></div>
+      <div class="ctl-row"><span class="name">&nbsp;</span><button>Return to default</button><button>Restart battery</button></div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { drawLineChart, drawBarChart } from '/charts.js';
+
+    const C = {
+      pv: '#ffe800', gridIn: '#e53935', batt: '#3ac5f3', load: '#009700', soc: '#00e5e5',
+    };
+    const $ = id => document.getElementById(id);
+    const kW = w => (w / 1000).toFixed(2) + ' kW';
+
+    // ---- live power (ported setHeight/setWidth from pv.html) ----
+    function setHeight(id, watts, max) {
+      const restricted = max ? watts - Math.max(0, max - 6100) : watts;
+      const el = $(id);
+      el.style.height = `${restricted * 16 / 1000}%`;
+      el.textContent = watts < 500 ? '' : String(Math.round(watts));
+    }
+
+    let failCount = 0;
+    async function refreshLive() {
+      try {
+        const res = await fetch('/runAll');
+        if (!res.ok) throw new Error('runAll ' + res.status);
+        const d = await res.json();
+        const inv = d.inverter;
+        const st = {
+          s1: inv.pv1_power_W, s2: inv.pv2_power_W,
+          bDrain: Math.max(0, inv.battery_power_W), bCharge: -Math.min(0, inv.battery_power_W),
+          gImport: -Math.min(0, inv.grid_power_W), gExport: Math.max(0, inv.grid_power_W),
+          load: inv.load_power_W, bFill: inv.battery_soc_percent,
+        };
+        const sumIn = st.s1 + st.s2 + st.bDrain + st.gImport;
+        const sumOut = st.gExport + st.load + st.bCharge;
+        setHeight('i-s1', st.s1); setHeight('i-s2', st.s2); setHeight('i-b', st.bDrain);
+        setHeight('i-g', st.gImport, sumIn);
+        setHeight('o-g', st.gExport); setHeight('o-b', st.bCharge); setHeight('o-l', st.load, sumOut);
+        $('bFill').style.width = st.bFill + '%';
+
+        $('r-pv').textContent = kW(inv.solar_power_W);
+        $('r-grid').textContent = (inv.grid_power_W >= 0 ? 'export ' : 'import ') + kW(Math.abs(inv.grid_power_W));
+        $('r-batt').textContent = (inv.battery_power_W >= 0 ? 'discharge ' : 'charge ') + kW(Math.abs(inv.battery_power_W));
+        $('r-load').textContent = kW(inv.load_power_W);
+        $('r-soc').textContent = inv.battery_soc_percent + ' %';
+        $('r-mode').textContent = inv.control?.battery_power_mode ?? '–';
+
+        updateFaults(inv, d);
+        setConn(true, 'live');
+        failCount = 0;
+      } catch (e) {
+        failCount++;
+        if (failCount > 2) { setConn(false); await diagnose(); }
+      }
+    }
+
+    // ---- fault / status panel ----
+    function updateFaults(inv, d) {
+      const badge = $('statusBadge');
+      const txt = inv.status_text || 'Unknown';
+      badge.textContent = txt;
+      badge.className = 'badge ' + (txt === 'Normal' ? 'b-ok'
+        : txt === 'Warning' || txt === 'Waiting' ? 'b-warn'
+        : txt === 'Fault' || txt === 'Firmware Update' ? 'b-fault' : 'b-unknown');
+
+      const hex = v => v ? '0x' + v.toString(16).toUpperCase().padStart(4, '0') : '—';
+      $('f-fault').textContent = hex(inv.fault_code_raw);
+      $('f-warn').textContent = hex(inv.warning_code_raw);
+      $('f-fault').className = 'v' + (inv.fault_code_raw ? ' bad' : '');
+      $('f-warn').className = 'v' + (inv.warning_code_raw ? ' warn' : '');
+
+      const b = (d.batteries && d.batteries[0]) || null;
+      const tmin = b ? b.temp_min_C : inv.temp_battery_C;
+      const tmax = b ? b.temp_max_C : inv.temp_battery_C;
+      const bt = $('f-btemp');
+      bt.textContent = (tmin != null ? tmin : '–') + ' / ' + (tmax != null ? tmax : '–') + ' °C';
+      bt.className = 'v' + ((tmax > 45 || tmin < 5) ? ' warn' : '');
+
+      const it = $('f-itemp');
+      const iv = inv.temp_inverter_heatsink_C;
+      it.textContent = (iv != null ? iv + ' °C' : '–');
+      it.className = 'v' + (iv > 75 ? ' bad' : iv > 60 ? ' warn' : '');
+
+      $('f-sys').textContent = inv.system_mode || '–';
+      $('f-updated').textContent = d.last_updated ? new Date(d.last_updated).toLocaleTimeString() : '–';
+    }
+
+    function setConn(ok, label) {
+      $('conn').querySelector('.dot').style.background = ok ? '#57d982' : '#f27272';
+      $('connText').textContent = ok ? (label || 'connected') : 'disconnected';
+      $('outageBanner').classList.toggle('show', !ok);
+    }
+
+    // Ask the server which layer is broken (same pattern as pv.html).
+    async function diagnose() {
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 5000);
+        const s = await (await fetch('/status', { signal: ctrl.signal })).json();
+        clearTimeout(t);
+        let msg = 'Inverter unavailable';
+        if (s.lanUp === false) msg = 'No network (WiFi?)';
+        else if (s.layer === 'inverter') msg = (s.host ? 'No inverter at ' + s.host : 'Searching for inverter') + (s.scanning ? ' (scanning…)' : '');
+        $('outageBanner').textContent = msg;
+      } catch {
+        $('outageBanner').textContent = 'Monitor offline';
+      }
+    }
+
+    // ---- day history ----
+    let dayCache = null;
+    function minutesOfDay(iso) { const d = new Date(iso); return d.getHours() * 60 + d.getMinutes(); }
+    const dayTicks = [0, 360, 720, 1080, 1440].map(v => ({ v, label: String(v / 60) }));
+
+    function drawDay() {
+      if (!dayCache) return;
+      const s = dayCache.samples;
+      const pts = f => s.map(x => [minutesOfDay(x.t), f(x)]);
+      drawLineChart($('dayPower'), [
+        { label: 'Solar', color: C.pv, points: pts(x => x.pv) },
+        { label: 'Grid', color: C.gridIn, points: pts(x => x.grid) },
+        { label: 'Battery', color: C.batt, points: pts(x => x.batt) },
+        { label: 'Load', color: C.load, points: pts(x => x.load) },
+      ], { title: 'Power (W)', xMin: 0, xMax: 1440, xTicks: dayTicks, legend: true });
+      drawLineChart($('daySoc'), [
+        { label: 'SOC', color: C.soc, points: pts(x => x.soc) },
+      ], { title: 'Battery SOC (%)', xMin: 0, xMax: 1440, yMin: 0, yMax: 100, xTicks: dayTicks });
+    }
+
+    async function loadDay(date) {
+      const r = await fetch('/history/day?date=' + encodeURIComponent(date));
+      dayCache = await r.json();
+      drawDay();
+    }
+
+    async function loadDays() {
+      try {
+        const days = await (await fetch('/history/days')).json();
+        const sel = $('daySel');
+        if (!days.length) { sel.innerHTML = '<option>no data yet</option>'; return; }
+        sel.innerHTML = days.slice().reverse().map(d => `<option value="${d}">${d}</option>`).join('');
+        sel.onchange = () => loadDay(sel.value);
+        await loadDay(sel.value);
+      } catch { /* server may not have data yet */ }
+    }
+
+    // ---- year summary ----
+    let yearCache = null;
+    function drawYear() {
+      if (!yearCache || !yearCache.length) return;
+      const groups = yearCache.map(e => ({
+        label: e.date.slice(5),
+        values: [e.pv_kWh || 0, e.consumption_kWh || 0, (e.import_kWh || 0) - (e.export_kWh || 0)],
+      }));
+      drawBarChart($('yearEnergy'), groups, {
+        title: 'Daily energy (kWh)', yUnit: '',
+        seriesLabels: ['PV', 'Consumption', 'Grid net'],
+        colors: [C.pv, C.load, C.gridIn],
+      });
+      const n = yearCache.length;
+      const step = Math.max(1, Math.ceil(n / 6));
+      const xTicks = yearCache.map((e, i) => ({ v: i, label: e.date.slice(5) })).filter((_, i) => i % step === 0);
+      drawLineChart($('yearSoc'), [
+        { label: 'Max SOC', color: C.soc, points: yearCache.map((e, i) => [i, e.max_soc ?? 0]) },
+      ], { title: 'Max battery SOC per day (%)', yMin: 0, yMax: 100, xMin: 0, xMax: Math.max(1, n - 1), xTicks });
+    }
+
+    async function loadYear() {
+      try {
+        yearCache = await (await fetch('/history/summary')).json();
+        drawYear();
+      } catch { /* no data yet */ }
+    }
+
+    // redraw charts on resize (debounced)
+    let rz;
+    window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { drawDay(); drawYear(); }, 150); });
+
+    // ---- boot ----
+    refreshLive();
+    setInterval(refreshLive, 60000);
+    loadDays();
+    loadYear();
+  </script>
+</body>
+</html>

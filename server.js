@@ -68,3 +68,8 @@ app.listen(config.apiPort, () => {
   console.log(`Batteries: ${config.numBatteries}`);
 });
 
+// Start the history sampler here (not on import) so it only runs in the real server
+// process, after read.js's cache/mutex is initialized.
+const { startSampler } = await import('./src/history.js');
+startSampler();
+

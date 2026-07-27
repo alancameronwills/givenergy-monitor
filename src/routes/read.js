@@ -59,7 +59,7 @@ async function classifyFailure(err) {
   return lastError;
 }
 
-async function refreshCache() {
+async function doRefresh() {
   let raw;
   try {
     raw = await fetchAllRegisters(config.numBatteries);
@@ -79,6 +79,22 @@ async function refreshCache() {
     batteries: batteries.map((regs, i) => buildBatteryData(regs, i + 1)),
     last_updated: new Date().toISOString(),
   };
+  return cache;
+}
+
+// The inverter handles one connection at a time and a full read is ~3s. Concurrent
+// callers (the Pi's /power poll, the dashboard, the history sampler) would otherwise
+// each open overlapping sockets and interfere. Share one in-flight read instead.
+let inFlight = null;
+export function refreshCache() {
+  if (inFlight) return inFlight;
+  inFlight = doRefresh().finally(() => { inFlight = null; });
+  return inFlight;
+}
+
+// Last cached model without hitting the inverter — used by the history sampler
+// after it awaits a serialized refreshCache().
+export function getCache() {
   return cache;
 }
 

@@ -3,6 +3,7 @@ import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 import readRoutes from './routes/read.js';
 import writeRoutes from './routes/write.js';
+import historyRoutes from './routes/history.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const app = express();
@@ -20,6 +21,7 @@ app.use((req, res, next) => {
 app.use(express.static(resolve(__dirname, '../public')));
 app.use(readRoutes);
 app.use(writeRoutes);
+app.use(historyRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 
