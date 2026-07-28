@@ -72,6 +72,8 @@ The inverter handles one connection at a time; `client.js` opens a socket per re
 
 `src/datamodel.js` maps raw register values to structured JSON. Registers use scaling flags (`deci` ÷10, `centi` ÷100, `u32` for 32-bit pairs, `ascii` for strings, `bcd` for time). The mapping closely mirrors the Python `givenergy_modbus` library.
 
+note that fault_code is buggy (mashes IR39/IR40) and fault_code_raw/warning_code_raw are the additive replacements the dashboard uses.
+
 ### Write operations
 
 `src/routes/write.js` exposes ~25 POST endpoints. Force-charge/export and pause operations use `setTimeout` to auto-revert the inverter state after N minutes.
@@ -80,6 +82,14 @@ The inverter handles one connection at a time; `client.js` opens a socket per re
 
 `GET /runAll` and `GET /getData` both populate an in-memory cache. `GET /getCache` returns the last cached result without hitting the inverter — used by the UI for polling without hammering the device.
 
+refreshCache() is guarded by an in-flight mutex (src/routes/read.js): concurrent callers share one read, because the inverter accepts one connection at a time. Any new code needing a fresh read must call refreshCache()/getCache() — never open its own socket.
+
+### History logging
+
+src/history.js samples the inverter every SAMPLE_INTERVAL_MS (default 5 min) and writes to data/ (gitignored): per-local-day detail in data/detail/YYYY-MM-DD.jsonl (local date because energy_today.* resets at local midnight) and a running data/daily.json summary. Daily figures are running maxima of the inverter's energy_today accumulators, so they survive restarts (the values live on the inverter); consumption is derived by energy balance. Pruned to DETAIL_RETENTION_DAYS/SUMMARY_RETENTION_DAYS. The sampler is started from server.js after app.listen (not on import). Read via GET /history/days|day|summary (src/routes/history.js).
+
 ### Web UI
 
 `public/pv.html` is a self-contained Sankey-style power flow diagram for a 480×320 display. It polls `/power` every 60 s and shows an "unavailable" banner on failure. `public/givenergy.js` is the browser ES module that wraps the `/power` fetch.
+
+public/dashboard.html (+ public/charts.js, dependency-free canvas charts) is the LAN dashboard: live power, faults, and day/year history graphs. Battery controls are stubbed pending PR2 -- see docs/PR2batterycontrolsplan.md
