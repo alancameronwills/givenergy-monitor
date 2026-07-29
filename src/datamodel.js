@@ -34,7 +34,7 @@ function timeReg(regs, addr) {
 
 const MODEL_MAP = { 2: 'Hybrid', 3: 'AC', 4: 'Hybrid', 5: 'EMS', 6: 'AC', 7: 'Gateway', 8: 'All in One' };
 const PHASE_MAP = { 2: 'Single', 3: 'Single', 4: 'Three', 5: 'Single', 6: 'Three', 7: 'Single', 8: 'Single' };
-const STATUS_MAP = { 0: 'Waiting', 1: 'Normal', 2: 'Warning', 3: 'Fault', 4: 'Firmware Update' };
+const STATUS_MAP = { 0: 'Idle', 1: 'Active', 2: 'Warning', 3: 'Fault', 4: 'Firmware Update' };
 
 export function buildInverterData(hr, ir) {
   const deviceTypeHex = u16(hr, 0).toString(16).padStart(4, '0');

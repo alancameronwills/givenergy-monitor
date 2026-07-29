@@ -48,9 +48,18 @@
     .ro .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
     .ro .v { font-variant-numeric: tabular-nums; }
 
+    /* read-only two-state indicator, shown as a vertical stack of buttons */
+    .toggle { display: inline-flex; flex-flow: row wrap; gap: 4px;
+      justify-self: end; justify-content: flex-end; }
+    .toggle .tbtn { min-width: 82px; text-align: center; padding: 3px 10px;
+      border: 1px solid var(--line); border-radius: 5px; background: #202024;
+      color: var(--muted); font-size: 12px; font-weight: 600; opacity: .55; }
+    .toggle .tbtn.on { background: #2f6fb0; color: #fff; border-color: #4a8fd6; opacity: 1; }
+
     /* --- fault panel --- */
     .badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-weight: 600; font-size: 14px; }
     .b-ok { background: #12351c; color: #57d982; } .b-warn { background: #3a2e0d; color: #f0c14b; }
+    .b-idle { background: #08210f; color: #2e8b57; }
     .b-fault { background: #3a1414; color: #f27272; } .b-unknown { background: #262629; color: var(--muted); }
     .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin-top: 12px; font-size: 14px; }
     .kv .k { color: var(--muted); } .kv .v { text-align: right; font-variant-numeric: tabular-nums; }
@@ -108,7 +117,12 @@
           <div class="ro"><span class="k"><span class="sw" style="background:var(--batt-drain)"></span>Battery</span><span class="v" id="r-batt">–</span></div>
           <div class="ro"><span class="k"><span class="sw" style="background:var(--load)"></span>Load</span><span class="v" id="r-load">–</span></div>
           <div class="ro"><span class="k"><span class="sw" style="background:var(--soc)"></span>SOC</span><span class="v" id="r-soc">–</span></div>
-          <div class="ro"><span class="k">Mode</span><span class="v" id="r-mode">–</span></div>
+          <div class="ro"><span class="k">Mode</span>
+            <span class="toggle" id="r-mode">
+              <span class="tbtn" data-k="demand">Demand</span>
+              <span class="tbtn" data-k="export">Export</span>
+            </span>
+          </div>
         </div>
       </div>
       <div id="battRow">
@@ -125,7 +139,11 @@
         <span class="k">Warning code</span><span class="v" id="f-warn">–</span>
         <span class="k">Battery temp (min/max)</span><span class="v" id="f-btemp">–</span>
         <span class="k">Inverter heatsink</span><span class="v" id="f-itemp">–</span>
-        <span class="k">System mode</span><span class="v" id="f-sys">–</span>
+        <span class="k">System mode</span>
+        <span class="toggle" id="f-sys">
+          <span class="tbtn" data-k="grid">Grid</span>
+          <span class="tbtn" data-k="offline">Offline</span>
+        </span>
         <span class="k">Last updated</span><span class="v" id="f-updated">–</span>
       </div>
     </section>
@@ -172,6 +190,14 @@
     const $ = id => document.getElementById(id);
     const kW = w => (w / 1000).toFixed(2) + ' kW';
 
+    // Light the button matching activeKey; grey both when activeKey is null.
+    function setToggle(id, activeKey) {
+      const el = $(id);
+      if (!el) return;
+      el.querySelectorAll('.tbtn').forEach(b =>
+        b.classList.toggle('on', activeKey != null && b.dataset.k === activeKey));
+    }
+
     // ---- live power (ported setHeight/setWidth from pv.html) ----
     function setHeight(id, watts, max) {
       const restricted = max ? watts - Math.max(0, max - 6100) : watts;
@@ -205,7 +231,9 @@
         $('r-batt').textContent = (inv.battery_power_W >= 0 ? 'discharge ' : 'charge ') + kW(Math.abs(inv.battery_power_W));
         $('r-load').textContent = kW(inv.load_power_W);
         $('r-soc').textContent = inv.battery_soc_percent + ' %';
-        $('r-mode').textContent = inv.control?.battery_power_mode ?? '–';
+        const bpm = inv.control?.battery_power_mode;
+        setToggle('r-mode', bpm === 'Demand / Self-consumption' ? 'demand'
+          : bpm === 'Max Power / Export' ? 'export' : null);
 
         updateFaults(inv, d);
         setConn(true, 'live');
@@ -221,8 +249,9 @@
       const badge = $('statusBadge');
       const txt = inv.status_text || 'Unknown';
       badge.textContent = txt;
-      badge.className = 'badge ' + (txt === 'Normal' ? 'b-ok'
-        : txt === 'Warning' || txt === 'Waiting' ? 'b-warn'
+      badge.className = 'badge ' + (txt === 'Active' ? 'b-ok'
+        : txt === 'Idle' ? 'b-idle'
+        : txt === 'Warning' ? 'b-warn'
         : txt === 'Fault' || txt === 'Firmware Update' ? 'b-fault' : 'b-unknown');
 
       const hex = v => v ? '0x' + v.toString(16).toUpperCase().padStart(4, '0') : '—';
@@ -243,7 +272,8 @@
       it.textContent = (iv != null ? iv + ' °C' : '–');
       it.className = 'v' + (iv > 75 ? ' bad' : iv > 60 ? ' warn' : '');
 
-      $('f-sys').textContent = inv.system_mode || '–';
+      setToggle('f-sys', inv.system_mode === 'Grid-tied' ? 'grid'
+        : inv.system_mode === 'Offline' ? 'offline' : null);
       $('f-updated').textContent = d.last_updated ? new Date(d.last_updated).toLocaleTimeString() : '–';
     }
 
