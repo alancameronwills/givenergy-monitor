@@ -157,9 +157,16 @@ export function drawBarChart(canvas, groups, opts = {}) {
   const pad = { l: 44, r: 10, t: opts.title ? 20 : 8, b: opts.seriesLabels ? 34 : 22 };
   if (!groups.length) return empty(ctx, W, H, opts.title);
 
-  const nSeries = Math.max(1, ...groups.map(g => g.values.length));
-  const colors = opts.colors || ['#ffe800', '#009700', '#e53935', '#3ac5f3'];
-  let yMax = opts.yMax ?? Math.max(1, ...groups.flatMap(g => g.values));
+  const defColors = opts.colors || ['#ffe800', '#009700', '#e53935', '#3ac5f3'];
+  // Normalise each group to a list of columns; each column is a bottom-to-top
+  // stack of { v, color } segments. Plain { values } groups become one
+  // single-segment column per value (the old side-by-side behaviour).
+  const cols = groups.map(g => g.columns
+    ? g.columns
+    : (g.values || []).map((v, i) => [{ v, color: defColors[i % defColors.length] }]));
+  const nCols = Math.max(1, ...cols.map(c => c.length));
+  const colTotal = col => col.reduce((s, seg) => s + (seg.v || 0), 0);
+  let yMax = opts.yMax ?? Math.max(1, ...cols.flatMap(c => c.map(colTotal)));
   let yMin = opts.yMin ?? 0;
   if (yMin === yMax) yMax = yMin + 1;
 
@@ -182,23 +189,28 @@ export function drawBarChart(canvas, groups, opts = {}) {
 
   const gw = plotW / groups.length;         // width per group
   const inner = gw * 0.7;                    // used by bars
-  const bw = inner / nSeries;                // per-series bar width
-  const y0 = Y(0);
+  const bw = inner / nCols;                  // per-column bar width
 
   // x labels: thin out so they don't overlap
   const every = Math.ceil(groups.length / 12);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  groups.forEach((g, gi) => {
+  cols.forEach((groupCols, gi) => {
     const gx = pad.l + gi * gw + (gw - inner) / 2;
-    g.values.forEach((v, si) => {
-      ctx.fillStyle = colors[si % colors.length];
-      const y = Y(v);
-      ctx.fillRect(gx + si * bw, Math.min(y, y0), Math.max(1, bw - 1), Math.abs(y0 - y));
+    groupCols.forEach((col, ci) => {
+      const x = gx + ci * bw;
+      let base = 0;                          // running total from the bottom up
+      for (const seg of col) {
+        const v = seg.v || 0;
+        const yTop = Y(base + v), yBot = Y(base);
+        ctx.fillStyle = seg.color;
+        ctx.fillRect(x, Math.min(yTop, yBot), Math.max(1, bw - 1), Math.abs(yBot - yTop));
+        base += v;
+      }
     });
     if (gi % every === 0) {
       ctx.fillStyle = TEXT;
-      ctx.fillText(g.label, pad.l + gi * gw + gw / 2, pad.t + plotH + 4);
+      ctx.fillText(groups[gi].label, pad.l + gi * gw + gw / 2, pad.t + plotH + 4);
     }
   });
 

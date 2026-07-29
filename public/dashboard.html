@@ -167,7 +167,7 @@
     import { drawLineChart, drawBarChart } from '/charts.js';
 
     const C = {
-      pv: '#ffe800', gridIn: '#e53935', batt: '#3ac5f3', load: '#009700', soc: '#00e5e5',
+      pv: '#ffe800', gridIn: '#e53935', gridOut: '#8b1a1a', batt: '#3ac5f3', load: '#009700', soc: '#00e5e5',
     };
     const $ = id => document.getElementById(id);
     const kW = w => (w / 1000).toFixed(2) + ' kW';
@@ -310,14 +310,25 @@
     let yearCache = null;
     function drawYear() {
       if (!yearCache || !yearCache.length) return;
-      const groups = yearCache.map(e => ({
-        label: e.date.slice(5),
-        values: [e.pv_kWh || 0, e.consumption_kWh || 0, (e.import_kWh || 0) - (e.export_kWh || 0)],
-      }));
+      // Each day shows a supply column and a demand column. Which side the grid
+      // sits on depends on the net flow: on an import day (net >= 0) the grid
+      // feeds supply, so stack PV above grid; on an export day the grid drains
+      // demand, so stack the grid export above consumption.
+      const groups = yearCache.map(e => {
+        const pv = e.pv_kWh || 0;
+        const cons = e.consumption_kWh || 0;
+        const net = (e.import_kWh || 0) - (e.export_kWh || 0);
+        const columns = net >= 0
+          ? [[{ v: net, color: C.gridIn }, { v: pv, color: C.pv }],
+             [{ v: cons, color: C.load }]]
+          : [[{ v: pv, color: C.pv }],
+             [{ v: cons, color: C.load }, { v: -net, color: C.gridOut }]];
+        return { label: e.date.slice(5), columns };
+      });
       drawBarChart($('yearEnergy'), groups, {
         title: 'Daily energy (kWh)', yUnit: '',
-        seriesLabels: ['PV', 'Consumption', 'Grid net'],
-        colors: [C.pv, C.load, C.gridIn],
+        seriesLabels: ['PV', 'Consumption', 'Grid import', 'Grid export'],
+        colors: [C.pv, C.load, C.gridIn, C.gridOut],
       });
       const n = yearCache.length;
       const step = Math.max(1, Math.ceil(n / 6));
