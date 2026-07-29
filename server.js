@@ -68,6 +68,17 @@ app.listen(config.apiPort, () => {
   console.log(`Batteries: ${config.numBatteries}`);
 });
 
+// Also serve on the standard HTTP port so the dashboard is reachable at http://<pi>/
+// with no port suffix. Binding port 80 needs privileges (root, or `setcap` on node);
+// warn and carry on rather than crash if it's unavailable.
+if (config.webPort && config.webPort !== config.apiPort) {
+  app.listen(config.webPort, () => {
+    console.log(`Dashboard also on port ${config.webPort} (http://<host>/)`);
+  }).on('error', (err) => {
+    console.warn(`Could not bind port ${config.webPort} (${err.code}); dashboard still available on port ${config.apiPort}`);
+  });
+}
+
 // Start the history sampler here (not on import) so it only runs in the real server
 // process, after read.js's cache/mutex is initialized.
 const { startSampler } = await import('./src/history.js');

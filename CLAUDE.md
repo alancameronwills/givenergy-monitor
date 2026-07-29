@@ -20,7 +20,15 @@ There is no automated test suite. Test manually via cURL against `http://localho
 
 `.env` is created/updated automatically — no manual setup required. On first run the server scans the local network, finds the inverter, and writes `.env`. Subsequent runs load `.env` via `--env-file-if-exists=.env` then re-scan to confirm the IP.
 
-Key variables: `INVERTER_HOST`, `INVERTER_PORT` (default 8899), `INVERTER_AIO` (All-in-One model flag), `NUM_BATTERIES`, `API_PORT` (default 6345).
+Key variables: `INVERTER_HOST`, `INVERTER_PORT` (default 8899), `INVERTER_AIO` (All-in-One model flag), `NUM_BATTERIES`, `API_PORT` (default 6345), `WEB_PORT` (default 80).
+
+The server listens on both `API_PORT` (6345) and `WEB_PORT` (80), serving the dashboard as the root page (`/`) on each. Binding port 80 needs privileges; if the bind fails (`EACCES`/`EADDRINUSE`) the server logs a warning and carries on serving via `API_PORT`. On the Raspberry Pi, grant node the capability once so it can bind port 80 without running as root:
+
+```bash
+sudo setcap 'cap_net_bind_service=+ep' $(readlink -f $(which node))
+```
+
+(Re-run after a Node upgrade, since it targets the specific binary.)
 
 ## Inverter discovery and reconnection
 

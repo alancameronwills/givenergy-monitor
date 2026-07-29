@@ -18,6 +18,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// Dashboard is the root page (before static, which has no index.html).
+app.get('/', (req, res) => res.sendFile(resolve(__dirname, '../public/dashboard.html')));
+
 app.use(express.static(resolve(__dirname, '../public')));
 app.use(readRoutes);
 app.use(writeRoutes);

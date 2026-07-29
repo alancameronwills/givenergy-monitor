@@ -7,6 +7,9 @@ export default {
   isAIO: process.env.INVERTER_AIO === 'true',
   numBatteries: parseInt(process.env.NUM_BATTERIES || '1'),
   apiPort: parseInt(process.env.API_PORT || '6345'),
+  // Standard HTTP port so the dashboard is reachable at http://<pi>/ with no port.
+  // Served in addition to apiPort; binding may fail without privileges (see server.js).
+  webPort: parseInt(process.env.WEB_PORT || '80'),
 
   // History logging (src/history.js). Sampler cadence and where data lives, plus how
   // long detail (per-day JSONL) and daily-summary entries are retained before pruning.
