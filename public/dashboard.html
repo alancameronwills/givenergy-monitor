@@ -342,14 +342,14 @@
       if (!yearCache || !yearCache.length) return;
       // Each day shows a supply column and a demand column. Which side the grid
       // sits on depends on the net flow: on an import day (net >= 0) the grid
-      // feeds supply, so stack PV above grid; on an export day the grid drains
-      // demand, so stack the grid export above consumption.
+      // feeds supply, so stack grid import above PV; on an export day the grid
+      // drains demand, so stack the grid export above consumption.
       const groups = yearCache.map(e => {
         const pv = e.pv_kWh || 0;
         const cons = e.consumption_kWh || 0;
         const net = (e.import_kWh || 0) - (e.export_kWh || 0);
         const columns = net >= 0
-          ? [[{ v: net, color: C.gridIn }, { v: pv, color: C.pv }],
+          ? [[{ v: pv, color: C.pv }, { v: net, color: C.gridIn }],
              [{ v: cons, color: C.load }]]
           : [[{ v: pv, color: C.pv }],
              [{ v: cons, color: C.load }, { v: -net, color: C.gridOut }]];
