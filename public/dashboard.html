@@ -27,7 +27,7 @@
 
     /* --- live power bars (ported from pv.html) --- */
     #liveWrap { display: flex; gap: 16px; }
-    #bars { flex: 0 0 190px; height: 240px; display: flex; justify-content: space-between; }
+    #bars { flex: 0 0 220px; height: 240px; display: flex; justify-content: space-between; }
     #scale { width: 14%; }
     #scale > div { height: 16%; width: 100%; border-top: 1px solid #444; font-size: 11px;
       color: var(--muted); text-align: center; }
@@ -67,6 +67,7 @@
 
     canvas { width: 100%; display: block; }
     .chart-day { height: 220px; } .chart-year { height: 220px; }
+    canvas.loading { opacity: .3; filter: grayscale(1); transition: opacity .15s, filter .15s; }
     label.sel { font-size: 13px; color: var(--muted); }
     select { background: #202024; color: var(--text); border: 1px solid var(--line);
       border-radius: 6px; padding: 5px 8px; font-size: 13px; }
@@ -188,7 +189,7 @@
       pv: '#ffe800', gridIn: '#e53935', gridOut: '#8b1a1a', batt: '#3ac5f3', load: '#009700', soc: '#00e5e5',
     };
     const $ = id => document.getElementById(id);
-    const kW = w => (w / 1000).toFixed(2) + ' kW';
+    const kW = w => (w / 1000).toFixed(2) + ' kW';
 
     // Light the button matching activeKey; grey both when activeKey is null.
     function setToggle(id, activeKey) {
@@ -320,9 +321,16 @@
     }
 
     async function loadDay(date) {
-      const r = await fetch('/history/day?date=' + encodeURIComponent(date));
-      dayCache = await r.json();
-      drawDay();
+      $('dayPower').classList.add('loading');
+      $('daySoc').classList.add('loading');
+      try {
+        const r = await fetch('/history/day?date=' + encodeURIComponent(date));
+        dayCache = await r.json();
+        drawDay();
+      } finally {
+        $('dayPower').classList.remove('loading');
+        $('daySoc').classList.remove('loading');
+      }
     }
 
     async function loadDays() {
@@ -340,19 +348,18 @@
     let yearCache = null;
     function drawYear() {
       if (!yearCache || !yearCache.length) return;
-      // Each day shows a supply column and a demand column. Which side the grid
-      // sits on depends on the net flow: on an import day (net >= 0) the grid
-      // feeds supply, so stack grid import above PV; on an export day the grid
-      // drains demand, so stack the grid export above consumption.
+      // Each day shows a supply column and a demand column. Supply stacks grid
+      // import above PV generated; demand stacks grid export above load. Import
+      // and export use distinct reds (gridIn / gridOut).
       const groups = yearCache.map(e => {
         const pv = e.pv_kWh || 0;
         const cons = e.consumption_kWh || 0;
-        const net = (e.import_kWh || 0) - (e.export_kWh || 0);
-        const columns = net >= 0
-          ? [[{ v: pv, color: C.pv }, { v: net, color: C.gridIn }],
-             [{ v: cons, color: C.load }]]
-          : [[{ v: pv, color: C.pv }],
-             [{ v: cons, color: C.load }, { v: -net, color: C.gridOut }]];
+        const imp = e.import_kWh || 0;
+        const exp = e.export_kWh || 0;
+        const columns = [
+          [{ v: pv, color: C.pv }, { v: imp, color: C.gridIn }],
+          [{ v: cons, color: C.load }, { v: exp, color: C.gridOut }],
+        ];
         return { label: e.date.slice(5), columns };
       });
       drawBarChart($('yearEnergy'), groups, {
