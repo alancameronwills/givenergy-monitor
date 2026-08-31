@@ -42,6 +42,14 @@ EOF
 
 Adjust the path if your username or install location differs.
 
+### To change hostname
+```bash
+sudo nano /etc/hosts
+sudo nano /etc/hostname
+rm -rf ~/.config/chromium/Singleton*
+sudo reboot
+```
+
 ## Configuration
 
 `.env` is created automatically on first run. Edit it to override defaults:
