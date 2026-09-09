@@ -14,6 +14,13 @@
 			setInterval(() => {
 				refresh();
 			}, 60000);
+			// Chromium can throttle timers when it treats the kiosk window as
+			// occluded/backgrounded; force an immediate refresh on regaining
+			// visibility/focus (e.g. a touch) instead of waiting for the next tick.
+			document.addEventListener("visibilitychange", () => {
+				if (document.visibilityState === "visible") refresh();
+			});
+			window.addEventListener("focus", refresh);
 			showWeather("weather", "daychart");
 		}
 		var previousSum = 0;
