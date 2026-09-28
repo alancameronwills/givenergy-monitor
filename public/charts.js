@@ -221,6 +221,6 @@ export function drawBarChart(canvas, groups, opts = {}) {
   ctx.stroke();
 
   if (opts.seriesLabels) {
-    drawLegend(ctx, opts.seriesLabels.map((label, i) => ({ label, color: colors[i % colors.length] })), pad.l, H - 8);
+    drawLegend(ctx, opts.seriesLabels.map((label, i) => ({ label, color: defColors[i % defColors.length] })), pad.l, H - 8);
   }
 }
