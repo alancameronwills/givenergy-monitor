@@ -60,6 +60,29 @@ function ensureDirs() {
 
 let daily = null;   // array, lazy-loaded
 
+// pv/import/export/charge/discharge all come from the same input-register batch
+// read (IR17/19/25/26/36/37). A single corrupted read can return a garbled value
+// for one of them (seen in the wild: pv=1329.7, import=600, export=3023.5 kWh in
+// one sample) and, because updateDaily folds samples in with Math.max, that one
+// bad read permanently pins the day's "running max" to nonsense. No domestic
+// PV/battery day legitimately gets near this, so treat it as a corrupt read.
+const MAX_PLAUSIBLE_KWH = 100;
+function plausibleEnergy(v) {
+  return typeof v === 'number' && v >= 0 && v <= MAX_PLAUSIBLE_KWH;
+}
+
+// One-time repair of entries already poisoned by the bug above (no sanity check
+// existed when they were written). The true max for that day can't be recovered,
+// so drop the whole entry rather than show a fabricated or partial number.
+function sanitizeDaily() {
+  const before = daily.length;
+  daily = daily.filter(d =>
+    plausibleEnergy(d.pv_kWh) && plausibleEnergy(d.import_kWh) &&
+    plausibleEnergy(d.export_kWh) && plausibleEnergy(d.charge_kWh) &&
+    plausibleEnergy(d.discharge_kWh));
+  if (daily.length !== before) persistDaily();
+}
+
 function loadDaily() {
   if (daily) return daily;
   try {
@@ -68,6 +91,7 @@ function loadDaily() {
   } catch {
     daily = [];   // missing or corrupt — start fresh
   }
+  sanitizeDaily();
   return daily;
 }
 
@@ -85,13 +109,16 @@ function updateDaily(date, s) {
   let e = daily.find(d => d.date === date);
   if (!e) { e = { date }; daily.push(e); }
 
-  e.pv_kWh        = round(Math.max(e.pv_kWh        ?? 0, s.e_pv));
-  e.import_kWh    = round(Math.max(e.import_kWh    ?? 0, s.e_imp));
-  e.export_kWh    = round(Math.max(e.export_kWh    ?? 0, s.e_exp));
-  e.charge_kWh    = round(Math.max(e.charge_kWh    ?? 0, s.e_chg));
-  e.discharge_kWh = round(Math.max(e.discharge_kWh ?? 0, s.e_dis));
-  e.consumption_kWh = round(Math.max(0,
-    e.pv_kWh + e.import_kWh + e.discharge_kWh - e.export_kWh - e.charge_kWh));
+  const energyOk = [s.e_pv, s.e_imp, s.e_exp, s.e_chg, s.e_dis].every(plausibleEnergy);
+  if (energyOk) {
+    e.pv_kWh        = round(Math.max(e.pv_kWh        ?? 0, s.e_pv));
+    e.import_kWh    = round(Math.max(e.import_kWh    ?? 0, s.e_imp));
+    e.export_kWh    = round(Math.max(e.export_kWh    ?? 0, s.e_exp));
+    e.charge_kWh    = round(Math.max(e.charge_kWh    ?? 0, s.e_chg));
+    e.discharge_kWh = round(Math.max(e.discharge_kWh ?? 0, s.e_dis));
+    e.consumption_kWh = round(Math.max(0,
+      e.pv_kWh + e.import_kWh + e.discharge_kWh - e.export_kWh - e.charge_kWh));
+  }
 
   e.max_soc = Math.max(e.max_soc ?? -Infinity, s.soc);
   e.min_soc = Math.min(e.min_soc ?? Infinity, s.soc);
